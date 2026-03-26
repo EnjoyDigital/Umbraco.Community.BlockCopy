@@ -657,4 +657,543 @@ describe('BlockSerializer', () => {
 			expect(level1.areas![0].key).to.equal('area-1-1');
 		});
 	});
+
+	// -- nested block key regeneration tests --
+
+	describe('nested block key regeneration', () => {
+		it('regenerates keys in a nested BlockList value', () => {
+			const portableData: PortableBlockData = {
+				version: PORTABLE_BLOCK_DATA_VERSION,
+				sourceUrl: 'https://test.com',
+				timestamp: Date.now(),
+				editorType: 'BlockList',
+				blocks: {
+					contentData: [
+						{
+							key: 'outer-content-1',
+							contentTypeKey: 'outer-type',
+							values: [
+								{
+									culture: null,
+									segment: null,
+									alias: 'innerBlocks',
+									editorAlias: 'Umbraco.BlockList',
+									value: {
+										contentData: [
+											{
+												key: 'nested-content-1',
+												contentTypeKey: 'nested-type',
+												values: [
+													{ culture: null, segment: null, alias: 'title', editorAlias: 'Umbraco.TextBox', value: 'Nested' },
+												],
+											},
+										],
+										settingsData: [],
+										layout: {
+											'Umbraco.BlockList': [
+												{ contentKey: 'nested-content-1', settingsKey: null },
+											],
+										},
+										expose: [
+											{ contentKey: 'nested-content-1', culture: null, segment: null },
+										],
+									},
+								},
+							],
+						},
+					],
+					settingsData: [],
+					layout: [
+						{ contentKey: 'outer-content-1', settingsKey: null },
+					],
+					expose: [],
+				},
+			};
+
+			const result = BlockSerializer.deserialize(portableData);
+
+			// Outer key should be regenerated
+			expect(result.contentData[0].key).to.not.equal('outer-content-1');
+
+			// Nested keys should also be regenerated
+			const nestedValue = result.contentData[0].values[0].value as any;
+			expect(nestedValue.contentData[0].key).to.not.equal('nested-content-1');
+
+			// Nested layout should reference the new nested key
+			expect(nestedValue.layout['Umbraco.BlockList'][0].contentKey).to.equal(nestedValue.contentData[0].key);
+
+			// Nested expose should reference the new nested key
+			expect(nestedValue.expose[0].contentKey).to.equal(nestedValue.contentData[0].key);
+
+			// Nested value content should be preserved
+			expect(nestedValue.contentData[0].values[0].value).to.equal('Nested');
+		});
+
+		it('regenerates keys in deeply nested blocks (2 levels)', () => {
+			// Block containing a BlockList containing another BlockList
+			const portableData: PortableBlockData = {
+				version: PORTABLE_BLOCK_DATA_VERSION,
+				sourceUrl: 'https://test.com',
+				timestamp: Date.now(),
+				editorType: 'BlockList',
+				blocks: {
+					contentData: [
+						{
+							key: 'level-0',
+							contentTypeKey: 'type-0',
+							values: [
+								{
+									culture: null,
+									segment: null,
+									alias: 'level1Blocks',
+									editorAlias: 'Umbraco.BlockList',
+									value: {
+										contentData: [
+											{
+												key: 'level-1',
+												contentTypeKey: 'type-1',
+												values: [
+													{
+														culture: null,
+														segment: null,
+														alias: 'level2Blocks',
+														editorAlias: 'Umbraco.BlockList',
+														value: {
+															contentData: [
+																{
+																	key: 'level-2',
+																	contentTypeKey: 'type-2',
+																	values: [{ culture: null, segment: null, alias: 'text', editorAlias: 'Umbraco.TextBox', value: 'Deep' }],
+																},
+															],
+															settingsData: [],
+															layout: { 'Umbraco.BlockList': [{ contentKey: 'level-2', settingsKey: null }] },
+															expose: [],
+														},
+													},
+												],
+											},
+										],
+										settingsData: [],
+										layout: { 'Umbraco.BlockList': [{ contentKey: 'level-1', settingsKey: null }] },
+										expose: [],
+									},
+								},
+							],
+						},
+					],
+					settingsData: [],
+					layout: [{ contentKey: 'level-0', settingsKey: null }],
+					expose: [],
+				},
+			};
+
+			const result = BlockSerializer.deserialize(portableData);
+
+			// Level 0 regenerated
+			expect(result.contentData[0].key).to.not.equal('level-0');
+
+			// Level 1 regenerated
+			const level1 = result.contentData[0].values[0].value as any;
+			expect(level1.contentData[0].key).to.not.equal('level-1');
+			expect(level1.layout['Umbraco.BlockList'][0].contentKey).to.equal(level1.contentData[0].key);
+
+			// Level 2 regenerated
+			const level2 = level1.contentData[0].values[0].value as any;
+			expect(level2.contentData[0].key).to.not.equal('level-2');
+			expect(level2.layout['Umbraco.BlockList'][0].contentKey).to.equal(level2.contentData[0].key);
+			expect(level2.contentData[0].values[0].value).to.equal('Deep');
+		});
+
+		it('handles nested BlockGrid within BlockList', () => {
+			const portableData: PortableBlockData = {
+				version: PORTABLE_BLOCK_DATA_VERSION,
+				sourceUrl: 'https://test.com',
+				timestamp: Date.now(),
+				editorType: 'BlockList',
+				blocks: {
+					contentData: [
+						{
+							key: 'outer-1',
+							contentTypeKey: 'outer-type',
+							values: [
+								{
+									culture: null,
+									segment: null,
+									alias: 'gridBlocks',
+									editorAlias: 'Umbraco.BlockGrid',
+									value: {
+										contentData: [
+											{ key: 'grid-1', contentTypeKey: 'grid-type', values: [] },
+										],
+										settingsData: [],
+										layout: {
+											'Umbraco.BlockGrid': [
+												{ contentKey: 'grid-1', settingsKey: null, columnSpan: 12, rowSpan: 1 },
+											],
+										},
+										expose: [],
+									},
+								},
+							],
+						},
+					],
+					settingsData: [],
+					layout: [{ contentKey: 'outer-1', settingsKey: null }],
+					expose: [],
+				},
+			};
+
+			const result = BlockSerializer.deserialize(portableData);
+			const nestedGrid = result.contentData[0].values[0].value as any;
+
+			expect(nestedGrid.contentData[0].key).to.not.equal('grid-1');
+			expect(nestedGrid.layout['Umbraco.BlockGrid'][0].contentKey).to.equal(nestedGrid.contentData[0].key);
+			// Grid-specific properties preserved
+			expect(nestedGrid.layout['Umbraco.BlockGrid'][0].columnSpan).to.equal(12);
+		});
+
+		it('skips non-block editor values', () => {
+			const portableData: PortableBlockData = {
+				version: PORTABLE_BLOCK_DATA_VERSION,
+				sourceUrl: 'https://test.com',
+				timestamp: Date.now(),
+				editorType: 'BlockList',
+				blocks: {
+					contentData: [
+						{
+							key: 'c-1',
+							contentTypeKey: 'type-1',
+							values: [
+								{ culture: null, segment: null, alias: 'title', editorAlias: 'Umbraco.TextBox', value: 'Hello' },
+								{ culture: null, segment: null, alias: 'body', editorAlias: 'Umbraco.RichText', value: '<p>World</p>' },
+							],
+						},
+					],
+					settingsData: [],
+					layout: [{ contentKey: 'c-1', settingsKey: null }],
+					expose: [],
+				},
+			};
+
+			const result = BlockSerializer.deserialize(portableData);
+			// Non-block values unchanged
+			expect(result.contentData[0].values[0].value).to.equal('Hello');
+			expect(result.contentData[0].values[1].value).to.equal('<p>World</p>');
+		});
+
+		it('handles nested settings data key regeneration', () => {
+			const portableData: PortableBlockData = {
+				version: PORTABLE_BLOCK_DATA_VERSION,
+				sourceUrl: 'https://test.com',
+				timestamp: Date.now(),
+				editorType: 'BlockList',
+				blocks: {
+					contentData: [
+						{
+							key: 'outer-1',
+							contentTypeKey: 'outer-type',
+							values: [
+								{
+									culture: null,
+									segment: null,
+									alias: 'nestedBlocks',
+									editorAlias: 'Umbraco.BlockList',
+									value: {
+										contentData: [
+											{ key: 'nc-1', contentTypeKey: 'nt', values: [] },
+										],
+										settingsData: [
+											{ key: 'ns-1', contentTypeKey: 'nst', values: [{ culture: null, segment: null, alias: 'css', editorAlias: 'Umbraco.TextBox', value: 'wide' }] },
+										],
+										layout: {
+											'Umbraco.BlockList': [
+												{ contentKey: 'nc-1', settingsKey: 'ns-1' },
+											],
+										},
+										expose: [],
+									},
+								},
+							],
+						},
+					],
+					settingsData: [],
+					layout: [{ contentKey: 'outer-1', settingsKey: null }],
+					expose: [],
+				},
+			};
+
+			const result = BlockSerializer.deserialize(portableData);
+			const nested = result.contentData[0].values[0].value as any;
+
+			expect(nested.contentData[0].key).to.not.equal('nc-1');
+			expect(nested.settingsData[0].key).to.not.equal('ns-1');
+			expect(nested.layout['Umbraco.BlockList'][0].contentKey).to.equal(nested.contentData[0].key);
+			expect(nested.layout['Umbraco.BlockList'][0].settingsKey).to.equal(nested.settingsData[0].key);
+			// Value preserved
+			expect(nested.settingsData[0].values[0].value).to.equal('wide');
+		});
+	});
+
+	// -- merge tests --
+
+	describe('merge', () => {
+		it('appends incoming blocks to existing blocks', () => {
+			const existing = {
+				contentData: [
+					{
+						key: 'existing-c1',
+						contentTypeKey: 'type-a',
+						values: [{ culture: null, segment: null, alias: 'title', editorAlias: 'Umbraco.TextBox', value: 'Existing 1' }],
+					},
+					{
+						key: 'existing-c2',
+						contentTypeKey: 'type-b',
+						values: [{ culture: null, segment: null, alias: 'title', editorAlias: 'Umbraco.TextBox', value: 'Existing 2' }],
+					},
+				],
+				settingsData: [],
+				layout: {
+					'Umbraco.BlockList': [
+						{ contentKey: 'existing-c1', settingsKey: null },
+						{ contentKey: 'existing-c2', settingsKey: null },
+					],
+				},
+				expose: [
+					{ contentKey: 'existing-c1', culture: null, segment: null },
+				],
+			};
+
+			const incoming = {
+				contentData: [
+					{
+						key: 'incoming-c1',
+						contentTypeKey: 'type-c',
+						values: [{ culture: null, segment: null, alias: 'name', editorAlias: 'Umbraco.TextBox', value: 'Incoming 1' }],
+					},
+				],
+				settingsData: [],
+				layout: {
+					'Umbraco.BlockList': [
+						{ contentKey: 'incoming-c1', settingsKey: null },
+					],
+				},
+				expose: [
+					{ contentKey: 'incoming-c1', culture: null, segment: null },
+				],
+			};
+
+			const result = BlockSerializer.merge(existing, incoming, 'BlockList');
+
+			expect(result.contentData).to.have.length(3);
+			expect(result.contentData[0].key).to.equal('existing-c1');
+			expect(result.contentData[1].key).to.equal('existing-c2');
+			expect(result.contentData[2].key).to.equal('incoming-c1');
+			expect(result.contentData[0].values[0].value).to.equal('Existing 1');
+			expect(result.contentData[2].values[0].value).to.equal('Incoming 1');
+		});
+
+		it('merges settings data', () => {
+			const existing = {
+				contentData: [
+					{ key: 'ec1', contentTypeKey: 'ta', values: [] },
+				],
+				settingsData: [
+					{
+						key: 'es1',
+						contentTypeKey: 'st-a',
+						values: [{ culture: null, segment: null, alias: 'css', editorAlias: 'Umbraco.TextBox', value: 'hero' }],
+					},
+				],
+				layout: {
+					'Umbraco.BlockList': [
+						{ contentKey: 'ec1', settingsKey: 'es1' },
+					],
+				},
+				expose: [],
+			};
+
+			const incoming = {
+				contentData: [
+					{ key: 'ic1', contentTypeKey: 'tb', values: [] },
+				],
+				settingsData: [
+					{
+						key: 'is1',
+						contentTypeKey: 'st-b',
+						values: [{ culture: null, segment: null, alias: 'bg', editorAlias: 'Umbraco.TextBox', value: 'dark' }],
+					},
+				],
+				layout: {
+					'Umbraco.BlockList': [
+						{ contentKey: 'ic1', settingsKey: 'is1' },
+					],
+				},
+				expose: [],
+			};
+
+			const result = BlockSerializer.merge(existing, incoming, 'BlockList');
+
+			expect(result.settingsData).to.have.length(2);
+			expect(result.settingsData[0].key).to.equal('es1');
+			expect(result.settingsData[0].values[0].value).to.equal('hero');
+			expect(result.settingsData[1].key).to.equal('is1');
+			expect(result.settingsData[1].values[0].value).to.equal('dark');
+		});
+
+		it('merges layout entries', () => {
+			const existing = {
+				contentData: [
+					{ key: 'ec1', contentTypeKey: 'ta', values: [] },
+				],
+				settingsData: [],
+				layout: {
+					'Umbraco.BlockList': [
+						{ contentKey: 'ec1', settingsKey: null },
+					],
+				},
+				expose: [],
+			};
+
+			const incoming = {
+				contentData: [
+					{ key: 'ic1', contentTypeKey: 'tb', values: [] },
+					{ key: 'ic2', contentTypeKey: 'tc', values: [] },
+				],
+				settingsData: [],
+				layout: {
+					'Umbraco.BlockList': [
+						{ contentKey: 'ic1', settingsKey: null },
+						{ contentKey: 'ic2', settingsKey: null },
+					],
+				},
+				expose: [],
+			};
+
+			const result = BlockSerializer.merge(existing, incoming, 'BlockList');
+
+			const layout = result.layout['Umbraco.BlockList'] as Array<{ contentKey: string }>;
+			expect(layout).to.have.length(3);
+			expect(layout[0].contentKey).to.equal('ec1');
+			expect(layout[1].contentKey).to.equal('ic1');
+			expect(layout[2].contentKey).to.equal('ic2');
+		});
+
+		it('merges expose entries', () => {
+			const existing = {
+				contentData: [
+					{ key: 'ec1', contentTypeKey: 'ta', values: [] },
+				],
+				settingsData: [],
+				layout: { 'Umbraco.BlockList': [] },
+				expose: [
+					{ contentKey: 'ec1', culture: null, segment: null },
+				],
+			};
+
+			const incoming = {
+				contentData: [
+					{ key: 'ic1', contentTypeKey: 'tb', values: [] },
+				],
+				settingsData: [],
+				layout: { 'Umbraco.BlockList': [] },
+				expose: [
+					{ contentKey: 'ic1', culture: 'en-US', segment: null },
+				],
+			};
+
+			const result = BlockSerializer.merge(existing, incoming, 'BlockList');
+
+			expect(result.expose).to.have.length(2);
+			expect(result.expose[0].contentKey).to.equal('ec1');
+			expect(result.expose[0].culture).to.be.null;
+			expect(result.expose[1].contentKey).to.equal('ic1');
+			expect(result.expose[1].culture).to.equal('en-US');
+		});
+
+		it('handles empty existing value', () => {
+			const existing = {
+				contentData: [],
+				settingsData: [],
+				layout: { 'Umbraco.BlockList': [] },
+				expose: [],
+			};
+
+			const incoming = {
+				contentData: [
+					{ key: 'ic1', contentTypeKey: 'tb', values: [{ culture: null, segment: null, alias: 'title', editorAlias: 'Umbraco.TextBox', value: 'New' }] },
+				],
+				settingsData: [],
+				layout: {
+					'Umbraco.BlockList': [
+						{ contentKey: 'ic1', settingsKey: null },
+					],
+				},
+				expose: [
+					{ contentKey: 'ic1', culture: null, segment: null },
+				],
+			};
+
+			const result = BlockSerializer.merge(existing, incoming, 'BlockList');
+
+			expect(result.contentData).to.have.length(1);
+			expect(result.contentData[0].key).to.equal('ic1');
+			expect(result.contentData[0].values[0].value).to.equal('New');
+
+			const layout = result.layout['Umbraco.BlockList'] as Array<{ contentKey: string }>;
+			expect(layout).to.have.length(1);
+			expect(result.expose).to.have.length(1);
+		});
+
+		it('preserves existing keys (no regeneration of existing)', () => {
+			const existing = {
+				contentData: [
+					{ key: 'keep-me-1', contentTypeKey: 'ta', values: [{ culture: null, segment: null, alias: 'a', editorAlias: 'Umbraco.TextBox', value: 'x' }] },
+					{ key: 'keep-me-2', contentTypeKey: 'tb', values: [] },
+				],
+				settingsData: [
+					{ key: 'keep-settings-1', contentTypeKey: 'sa', values: [{ culture: null, segment: null, alias: 'b', editorAlias: 'Umbraco.TextBox', value: 'y' }] },
+				],
+				layout: {
+					'Umbraco.BlockList': [
+						{ contentKey: 'keep-me-1', settingsKey: 'keep-settings-1' },
+						{ contentKey: 'keep-me-2', settingsKey: null },
+					],
+				},
+				expose: [
+					{ contentKey: 'keep-me-1', culture: null, segment: null },
+				],
+			};
+
+			const incoming = {
+				contentData: [
+					{ key: 'new-1', contentTypeKey: 'tc', values: [] },
+				],
+				settingsData: [],
+				layout: {
+					'Umbraco.BlockList': [
+						{ contentKey: 'new-1', settingsKey: null },
+					],
+				},
+				expose: [],
+			};
+
+			const result = BlockSerializer.merge(existing, incoming, 'BlockList');
+
+			// Existing keys must be preserved exactly
+			expect(result.contentData[0].key).to.equal('keep-me-1');
+			expect(result.contentData[1].key).to.equal('keep-me-2');
+			expect(result.settingsData[0].key).to.equal('keep-settings-1');
+			expect(result.expose[0].contentKey).to.equal('keep-me-1');
+
+			// Incoming key also preserved
+			expect(result.contentData[2].key).to.equal('new-1');
+
+			const layout = result.layout['Umbraco.BlockList'] as Array<{ contentKey: string; settingsKey: string | null }>;
+			expect(layout[0].contentKey).to.equal('keep-me-1');
+			expect(layout[0].settingsKey).to.equal('keep-settings-1');
+			expect(layout[1].contentKey).to.equal('keep-me-2');
+			expect(layout[2].contentKey).to.equal('new-1');
+		});
+	});
 });

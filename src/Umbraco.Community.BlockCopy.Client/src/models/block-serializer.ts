@@ -118,6 +118,57 @@ export class BlockSerializer {
 		};
 	}
 
+	static merge(
+		existing: BlockValueModel,
+		incoming: DeserializedBlockValue,
+		editorType: 'BlockList' | 'BlockGrid',
+	): DeserializedBlockValue {
+		const schemaAlias = editorType === 'BlockList' ? BLOCK_LIST_SCHEMA_ALIAS : BLOCK_GRID_SCHEMA_ALIAS;
+
+		// Get existing layout array
+		const existingLayout = (existing.layout[schemaAlias] ?? []) as Array<unknown>;
+		// Get incoming layout array
+		const incomingLayout = (incoming.layout[schemaAlias] ?? []) as Array<unknown>;
+
+		// Map existing content/settings data to our model format
+		const existingContentData: Array<PortableBlockDataModel> = existing.contentData.map((block) => ({
+			key: block.key,
+			contentTypeKey: block.contentTypeKey,
+			values: block.values.map((v: Record<string, unknown>) => ({
+				culture: (v.culture as string | null) ?? null,
+				segment: (v.segment as string | null) ?? null,
+				alias: v.alias as string,
+				editorAlias: v.editorAlias as string,
+				value: v.value,
+			})),
+		}));
+
+		const existingSettingsData: Array<PortableBlockDataModel> = existing.settingsData.map((block) => ({
+			key: block.key,
+			contentTypeKey: block.contentTypeKey,
+			values: block.values.map((v: Record<string, unknown>) => ({
+				culture: (v.culture as string | null) ?? null,
+				segment: (v.segment as string | null) ?? null,
+				alias: v.alias as string,
+				editorAlias: v.editorAlias as string,
+				value: v.value,
+			})),
+		}));
+
+		const existingExpose: Array<PortableBlockExposeModel> = (existing.expose ?? []).map((e) => ({
+			contentKey: e.contentKey,
+			culture: e.culture,
+			segment: e.segment,
+		}));
+
+		return {
+			contentData: [...existingContentData, ...incoming.contentData],
+			settingsData: [...existingSettingsData, ...incoming.settingsData],
+			layout: { [schemaAlias]: [...existingLayout, ...incomingLayout] },
+			expose: [...existingExpose, ...incoming.expose],
+		};
+	}
+
 	static deserialize(portableData: PortableBlockData): DeserializedBlockValue {
 		const validation = BlockSerializer.validate(portableData);
 		if (!validation.valid) {
@@ -144,6 +195,14 @@ export class BlockSerializer {
 			const newKey = generateUUID();
 			keyMap.set(block.key, newKey);
 			block.key = newKey;
+		}
+
+		// Process nested block values (blocks within blocks)
+		for (const block of contentData) {
+			BlockSerializer.#processNestedBlockValues(block.values);
+		}
+		for (const block of settingsData) {
+			BlockSerializer.#processNestedBlockValues(block.values);
 		}
 
 		// Remap layout keys
@@ -291,6 +350,76 @@ export class BlockSerializer {
 			if (entry.areas) {
 				for (const area of entry.areas) {
 					BlockSerializer.#remapGridLayoutKeys(area.items, keyMap);
+				}
+			}
+		}
+	}
+
+	static #processNestedBlockValues(
+		values: Array<PortableBlockDataValueModel>,
+	): void {
+		for (const val of values) {
+			if (!val.editorAlias) continue;
+
+			const isBlockEditor = val.editorAlias.includes('BlockList') || val.editorAlias.includes('BlockGrid');
+			if (!isBlockEditor || !val.value || typeof val.value !== 'object') continue;
+
+			const nested = val.value as Record<string, unknown>;
+			if (!Array.isArray(nested.contentData) || !nested.layout || typeof nested.layout !== 'object') continue;
+
+			const nestedKeyMap = new Map<string, string>();
+
+			// Regenerate content data keys
+			for (const block of nested.contentData as Array<{ key: string; values?: Array<PortableBlockDataValueModel> }>) {
+				if (typeof block.key === 'string') {
+					const newKey = generateUUID();
+					nestedKeyMap.set(block.key, newKey);
+					block.key = newKey;
+				}
+				// Recurse into nested block's values for deeper nesting
+				if (Array.isArray(block.values)) {
+					BlockSerializer.#processNestedBlockValues(block.values);
+				}
+			}
+
+			// Regenerate settings data keys
+			if (Array.isArray(nested.settingsData)) {
+				for (const block of nested.settingsData as Array<{ key: string; values?: Array<PortableBlockDataValueModel> }>) {
+					if (typeof block.key === 'string') {
+						const newKey = generateUUID();
+						nestedKeyMap.set(block.key, newKey);
+						block.key = newKey;
+					}
+					if (Array.isArray(block.values)) {
+						BlockSerializer.#processNestedBlockValues(block.values);
+					}
+				}
+			}
+
+			// Remap layout keys
+			const layout = nested.layout as Record<string, Array<unknown> | undefined>;
+			for (const [alias, entries] of Object.entries(layout)) {
+				if (!Array.isArray(entries)) continue;
+				if (alias.includes('BlockGrid')) {
+					BlockSerializer.#remapGridLayoutKeys(
+						entries as Array<PortableBlockGridLayoutModel>,
+						nestedKeyMap,
+					);
+				} else {
+					BlockSerializer.#remapListLayoutKeys(
+						entries as Array<PortableBlockListLayoutModel>,
+						nestedKeyMap,
+					);
+				}
+			}
+
+			// Remap expose keys
+			if (Array.isArray(nested.expose)) {
+				for (const entry of nested.expose as Array<{ contentKey: string }>) {
+					const newKey = nestedKeyMap.get(entry.contentKey);
+					if (newKey) {
+						entry.contentKey = newKey;
+					}
 				}
 			}
 		}

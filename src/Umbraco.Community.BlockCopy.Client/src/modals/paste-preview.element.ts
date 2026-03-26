@@ -16,6 +16,9 @@ export class BlockCopyPastePreviewModalElement extends UmbModalBaseElement<
 	@state()
 	private _isTypeMismatch = false;
 
+	@state()
+	private _pasteMode: 'replace' | 'append' = 'append';
+
 	override connectedCallback(): void {
 		super.connectedCallback();
 		this._analyzeData();
@@ -46,7 +49,7 @@ export class BlockCopyPastePreviewModalElement extends UmbModalBaseElement<
 	}
 
 	#handleConfirm(): void {
-		this.modalContext?.setValue({ confirmed: true });
+		this.modalContext?.setValue({ confirmed: true, pasteMode: this._pasteMode });
 		this.modalContext?.submit();
 	}
 
@@ -124,9 +127,29 @@ export class BlockCopyPastePreviewModalElement extends UmbModalBaseElement<
 						</p>
 					</uui-box>
 
-					<p class="paste-warning">
-						Pasting will <strong>replace</strong> the current property value with the imported blocks.
-					</p>
+					<uui-box headline="Paste Mode">
+						<div class="mode-selection">
+							<uui-button-group>
+								<uui-button
+									label="Append to existing"
+									look=${this._pasteMode === 'append' ? 'primary' : 'default'}
+									@click=${() => this._pasteMode = 'append'}>
+								</uui-button>
+								<uui-button
+									label="Replace all"
+									look=${this._pasteMode === 'replace' ? 'primary' : 'default'}
+									color=${this._pasteMode === 'replace' ? 'danger' : 'default'}
+									@click=${() => this._pasteMode = 'replace'}>
+								</uui-button>
+							</uui-button-group>
+							<p class="mode-description">
+								${this._pasteMode === 'append'
+									? `Will add ${blockCount} block(s) after the existing ${this.data?.existingBlockCount ?? 0} block(s).`
+									: `Will replace all ${this.data?.existingBlockCount ?? 0} existing block(s) with ${blockCount} imported block(s).`
+								}
+							</p>
+						</div>
+					</uui-box>
 				</div>
 
 				<div slot="actions">
@@ -207,10 +230,16 @@ export class BlockCopyPastePreviewModalElement extends UmbModalBaseElement<
 				margin-top: var(--uui-size-space-3);
 			}
 
-			.paste-warning {
-				text-align: center;
+			.mode-selection {
+				display: flex;
+				flex-direction: column;
+				gap: var(--uui-size-space-3);
+			}
+
+			.mode-description {
+				font-size: 0.85em;
 				color: var(--uui-color-text-alt);
-				font-size: 0.9em;
+				margin: 0;
 			}
 		`,
 	];

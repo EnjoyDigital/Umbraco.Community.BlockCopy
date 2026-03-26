@@ -4,7 +4,7 @@ import type { UmbControllerHost } from '@umbraco-cms/backoffice/controller-api';
 import { UMB_PROPERTY_CONTEXT } from '@umbraco-cms/backoffice/property';
 import { UMB_NOTIFICATION_CONTEXT } from '@umbraco-cms/backoffice/notification';
 import { UMB_MODAL_MANAGER_CONTEXT } from '@umbraco-cms/backoffice/modal';
-import { BlockSerializer } from '../models/block-serializer.js';
+import { BlockSerializer, type BlockValueModel } from '../models/block-serializer.js';
 import { ExternalClipboardBridge } from '../bridge/bridge.js';
 import { BLOCK_COPY_PASTE_PREVIEW_MODAL } from '../modals/paste-preview.token.js';
 
@@ -71,27 +71,54 @@ export class PasteExternalPropertyAction extends UmbPropertyActionBase {
 			const editorAlias = editorManifest?.alias ?? '';
 			const targetEditorType = editorAlias.includes('BlockGrid') ? 'BlockGrid' : 'BlockList';
 
+			// Get existing block count for the modal
+			const existingValue = this.#propertyContext.getValue() as BlockValueModel | undefined;
+			const existingBlockCount = existingValue?.contentData?.length ?? 0;
+
 			// Open paste preview modal
 			const modalContext = this.#modalManagerContext.open(this, BLOCK_COPY_PASTE_PREVIEW_MODAL, {
 				data: {
 					portableData,
 					targetEditorType,
+					existingBlockCount,
 				},
 			});
 
 			const result = await modalContext.onSubmit();
 
 			if (result?.confirmed) {
-				// Deserialize and set value
 				const deserializedValue = BlockSerializer.deserialize(portableData);
-				this.#propertyContext.setValue(deserializedValue);
 
-				const blockCount = deserializedValue.contentData.length;
-				this.#notificationContext.peek('positive', {
-					data: {
-						message: `${blockCount} block(s) pasted from external clipboard.`,
-					},
-				});
+				if (result.pasteMode === 'append') {
+					// Get existing value and merge
+					if (existingValue) {
+						const mergedValue = BlockSerializer.merge(existingValue, deserializedValue, targetEditorType);
+						this.#propertyContext.setValue(mergedValue);
+						const totalCount = mergedValue.contentData.length;
+						this.#notificationContext.peek('positive', {
+							data: {
+								message: `${deserializedValue.contentData.length} block(s) appended (${totalCount} total).`,
+							},
+						});
+					} else {
+						// No existing value, just set
+						this.#propertyContext.setValue(deserializedValue);
+						this.#notificationContext.peek('positive', {
+							data: {
+								message: `${deserializedValue.contentData.length} block(s) pasted from external clipboard.`,
+							},
+						});
+					}
+				} else {
+					// Replace mode (existing behaviour)
+					this.#propertyContext.setValue(deserializedValue);
+					const blockCount = deserializedValue.contentData.length;
+					this.#notificationContext.peek('positive', {
+						data: {
+							message: `${blockCount} block(s) pasted from external clipboard.`,
+						},
+					});
+				}
 			}
 		} catch (error) {
 			const message = (error as Error).message;
