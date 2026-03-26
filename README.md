@@ -112,7 +112,7 @@ The extension only activates on pages running the Umbraco backoffice (detected b
 
 - Node.js >= 22.17.1
 - npm >= 10.9.2
-- .NET 9.0 SDK
+- .NET 10.0 SDK
 - Umbraco CMS 17+
 
 ### Building
