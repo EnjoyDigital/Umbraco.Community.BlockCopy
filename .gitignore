@@ -1,0 +1,26 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+
+## Node
+node_modules/
+dist/
+
+## Build output
+src/Umbraco.Community.BlockCopy/wwwroot/App_Plugins/BlockCopy/**/*.js
+src/Umbraco.Community.BlockCopy/wwwroot/App_Plugins/BlockCopy/**/*.js.map
+!src/Umbraco.Community.BlockCopy/wwwroot/App_Plugins/BlockCopy/.gitkeep
+
+## Test results
+test-results/
+playwright-report/
+
+## Lock files
+package-lock.json
+
+## IDE
+.vs/
+.vscode/
+*.swp

@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Umbraco Block Copy</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <h1>Umbraco Block Copy</h1>
+    <div id="status" class="status">
+      <p class="status-label">Clipboard Status</p>
+      <p id="status-text" class="status-text">Checking...</p>
+    </div>
+    <div id="details" class="details" style="display: none;">
+      <p><strong>Source:</strong> <span id="source-url"></span></p>
+      <p><strong>Type:</strong> <span id="editor-type"></span></p>
+      <p><strong>Blocks:</strong> <span id="block-count"></span></p>
+      <p><strong>Copied:</strong> <span id="timestamp"></span></p>
+    </div>
+    <div class="actions">
+      <button id="clear-btn" class="btn btn-danger" style="display: none;">Clear Clipboard</button>
+    </div>
+    <footer>
+      <p class="version">v1.0.0</p>
+    </footer>
+  </div>
+  <script type="module" src="dist/popup.js"></script>
+</body>
+</html>
